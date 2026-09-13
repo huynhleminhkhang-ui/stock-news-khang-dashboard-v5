@@ -12,6 +12,7 @@ import streamlit as st
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 
+from analysis_engine import classify_region, detect_sector, extract_tickers, investment_thesis, market_synthesis
 from urgency import calculate_urgency, urgency_badge
 from storage import (
     backend_name, disable_subscriber, get_recent_articles, stats_today,
@@ -19,130 +20,62 @@ from storage import (
 )
 
 load_dotenv()
-
 try:
     from openai import OpenAI
 except Exception:
     OpenAI = None
 
+st.set_page_config(page_title="Market Intelligence V5.1", page_icon="📈", layout="wide")
 
-st.set_page_config(
-    page_title="Stock News AI Dashboard",
-    page_icon="📈",
-    layout="wide",
-)
-
-# ---------- STYLE ----------
 st.markdown("""
 <style>
-.block-container {padding-top: 1.2rem; padding-bottom: 2rem;}
-[data-testid="stSidebar"] {background: #f8fafc;}
-.dashboard-title {font-size: 2.1rem; font-weight: 800; margin-bottom: 0.2rem;}
-.dashboard-sub {color:#64748b; margin-bottom: 1rem;}
-.metric-card {
-    background: white;
-    border: 1px solid #e2e8f0;
-    border-radius: 16px;
-    padding: 16px 18px;
-    box-shadow: 0 2px 10px rgba(15,23,42,.04);
-}
-.badge {
-    display:inline-block;
-    padding:4px 9px;
-    border-radius:999px;
-    font-size:.82rem;
-    font-weight:700;
-    background:#eff6ff;
-    color:#1d4ed8;
-}
-.small-muted {color:#64748b;font-size:.88rem;}
-.summary-box {
-    background:#f8fafc;
-    border:1px solid #e2e8f0;
-    border-radius:14px;
-    padding:14px 16px;
-}
-.quick-view {
-    background:#eff6ff;
-    border:1px solid #dbeafe;
-    border-radius:12px;
-    padding:12px 14px;
-}
-.bond-box {
-    background:#fff;
-    border:1px solid #e2e8f0;
-    border-radius:14px;
-    padding:14px;
-}
-
-/* ---------- FORCE CONSISTENT LIGHT DASHBOARD ---------- */
-html, body, [data-testid="stAppViewContainer"], .stApp { background:#ffffff !important; color:#0f172a !important; }
-[data-testid="stHeader"] { background:rgba(255,255,255,.96) !important; }
-[data-testid="stSidebar"] { background:#f8fafc !important; border-right:1px solid #e2e8f0 !important; }
-[data-testid="stSidebar"] * { color:#0f172a !important; }
-[data-testid="stSidebar"] input, [data-testid="stSidebar"] textarea, [data-testid="stSidebar"] [data-baseweb="select"] > div,
-.stTextInput input, .stNumberInput input, .stTextArea textarea, [data-baseweb="select"] > div { background:#fff !important; color:#0f172a !important; border-color:#cbd5e1 !important; }
-[data-testid="stSidebar"] input::placeholder, [data-testid="stSidebar"] textarea::placeholder { color:#94a3b8 !important; }
-div[data-baseweb="tab-list"] { background:transparent !important; border-bottom:1px solid #e2e8f0 !important; }
-button[data-baseweb="tab"] { color:#475569 !important; }
-button[data-baseweb="tab"][aria-selected="true"] { color:#2563eb !important; }
-[data-testid="stMetric"] { background:#fff !important; border:1px solid #e2e8f0 !important; border-radius:14px !important; padding:12px 14px !important; }
-[data-testid="stMetricLabel"], [data-testid="stMetricValue"], [data-testid="stMetricDelta"] { color:#0f172a !important; }
-[data-testid="stExpander"] { background:#fff !important; border:1px solid #e2e8f0 !important; border-radius:14px !important; }
-[data-testid="stExpander"] summary, [data-testid="stExpander"] summary * { color:#0f172a !important; }
-[data-testid="stDataFrame"] { background:#fff !important; border-radius:12px !important; }
-[data-testid="stAlert"] { background:#eff6ff !important; color:#1e3a8a !important; border:1px solid #bfdbfe !important; }
-.stButton > button[kind="primary"] { background:#2563eb !important; color:#fff !important; border-color:#2563eb !important; }
-.stButton > button[kind="secondary"], .stDownloadButton > button, [data-testid="stLinkButton"] a { background:#fff !important; color:#0f172a !important; border:1px solid #cbd5e1 !important; }
-.dashboard-title { color:#0f172a !important; }
-.dashboard-sub, .small-muted { color:#64748b !important; }
-.summary-box, .bond-box { background:#fff !important; color:#0f172a !important; }
-.quick-view { background:#eff6ff !important; color:#1e3a8a !important; }
-
+.block-container {padding-top:1.2rem;padding-bottom:2rem;}
+[data-testid="stSidebar"] {background:#f8fafc!important;border-right:1px solid #e2e8f0!important;}
+html, body, [data-testid="stAppViewContainer"], .stApp {background:#fff!important;color:#0f172a!important;}
+[data-testid="stHeader"] {background:rgba(255,255,255,.96)!important;}
+.dashboard-title {font-size:2.1rem;font-weight:800;margin-bottom:.2rem;color:#0f172a!important;}
+.dashboard-sub,.small-muted {color:#64748b!important;}
+.metric-card,.summary-box,.thesis-box,.alert-panel {background:#fff;border:1px solid #e2e8f0;border-radius:16px;padding:16px 18px;box-shadow:0 2px 10px rgba(15,23,42,.04);}
+.market-box {background:#eff6ff;border:1px solid #bfdbfe;border-radius:16px;padding:16px 18px;color:#1e3a8a;}
+.risk-box {background:#fef2f2;border:1px solid #fecaca;border-radius:14px;padding:14px 16px;}
+.opportunity-box {background:#f0fdf4;border:1px solid #bbf7d0;border-radius:14px;padding:14px 16px;}
 .urgency-critical {background:#fef2f2;border:1px solid #fecaca;border-radius:12px;padding:12px 14px;}
 .urgency-high {background:#fff7ed;border:1px solid #fed7aa;border-radius:12px;padding:12px 14px;}
-.alert-panel {background:#f8fafc;border:1px solid #e2e8f0;border-radius:16px;padding:16px 18px;}
-
+.quick-view {background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:12px 14px;}
+[data-testid="stMetric"] {background:#fff!important;border:1px solid #e2e8f0!important;border-radius:14px!important;padding:12px 14px!important;}
+[data-testid="stExpander"] {background:#fff!important;border:1px solid #e2e8f0!important;border-radius:14px!important;}
+.stButton>button[kind="primary"] {background:#2563eb!important;color:#fff!important;border-color:#2563eb!important;}
 </style>
 """, unsafe_allow_html=True)
 
-
 COMPANY_NAMES = {
-    "FPT": "CTCP FPT", "SSI": "Chứng khoán SSI", "VIC": "Vingroup",
-    "VHM": "Vinhomes", "VCB": "Vietcombank", "BID": "BIDV",
-    "CTG": "VietinBank", "TCB": "Techcombank", "MBB": "MB Bank",
-    "VPB": "VPBank", "HPG": "Hòa Phát", "HSG": "Hoa Sen",
-    "NKG": "Nam Kim", "MWG": "Thế Giới Di Động", "VNM": "Vinamilk",
-    "GAS": "PV GAS", "PLX": "Petrolimex", "VND": "Chứng khoán VNDirect",
-    "HCM": "Chứng khoán HSC", "STB": "Sacombank", "ACB": "ACB",
-    "MSB": "MSB", "NVB": "NCB", "SGB": "Saigonbank", "TPB": "TPBank",
-    "DBC": "Dabaco", "MML": "Masan MEATLife", "HAG": "Hoàng Anh Gia Lai",
-    "DGW": "Digiworld", "PVS": "PVS", "KDH": "Khang Điền", "NLG": "Nam Long"
+    "FPT":"CTCP FPT","SSI":"Chứng khoán SSI","VIC":"Vingroup","VHM":"Vinhomes",
+    "VCB":"Vietcombank","BID":"BIDV","CTG":"VietinBank","TCB":"Techcombank",
+    "MBB":"MB Bank","VPB":"VPBank","HPG":"Hòa Phát","MWG":"Thế Giới Di Động",
+    "VNM":"Vinamilk","GAS":"PV GAS","PLX":"Petrolimex","VND":"VNDirect",
+    "HCM":"HSC","STB":"Sacombank","ACB":"ACB","TPB":"TPBank","PVS":"PVS",
+    "MSN":"Masan","VRE":"Vincom Retail","GVR":"Cao su Việt Nam","POW":"PV Power",
+    "DGC":"Hóa chất Đức Giang","SAB":"Sabeco","SHB":"SHB"
 }
 
 
 def clean_text(raw: str) -> str:
-    if not raw:
-        return ""
+    if not raw: return ""
     text = BeautifulSoup(raw, "html.parser").get_text(" ", strip=True)
-    text = html.unescape(text)
-    return re.sub(r"\s+", " ", text).strip()
+    return re.sub(r"\s+", " ", html.unescape(text)).strip()
 
 
 def normalize_title(title: str) -> str:
-    title = title.lower()
-    title = re.sub(r"\s+-\s+[^-]+$", "", title)
+    title = re.sub(r"\s+-\s+[^-]+$", "", (title or "").lower())
     title = re.sub(r"[^0-9a-zA-ZÀ-ỹ\s]", " ", title)
     return re.sub(r"\s+", " ", title).strip()
 
 
 def parsed_entry_time(entry):
     if entry.get("published_parsed"):
-        ts = calendar.timegm(entry.published_parsed)
-        return datetime.fromtimestamp(ts, tz=timezone.utc)
+        return datetime.fromtimestamp(calendar.timegm(entry.published_parsed), tz=timezone.utc)
     if entry.get("updated_parsed"):
-        ts = calendar.timegm(entry.updated_parsed)
-        return datetime.fromtimestamp(ts, tz=timezone.utc)
+        return datetime.fromtimestamp(calendar.timegm(entry.updated_parsed), tz=timezone.utc)
     return datetime.now(timezone.utc)
 
 
@@ -151,923 +84,284 @@ def fetch_google_news(ticker: str, days: int = 7, max_items: int = 20):
     ticker = ticker.strip().upper()
     company = COMPANY_NAMES.get(ticker, ticker)
     query = f'"{ticker}" "{company}" (cổ phiếu OR chứng khoán OR doanh nghiệp) when:{days}d'
-    url = (
-        "https://news.google.com/rss/search?"
-        f"q={quote_plus(query)}&hl=vi&gl=VN&ceid=VN:vi"
-    )
-
+    url = "https://news.google.com/rss/search?" + f"q={quote_plus(query)}&hl=vi&gl=VN&ceid=VN:vi"
     feed = feedparser.parse(url)
     cutoff = datetime.now(timezone.utc) - timedelta(days=days)
     rows, seen = [], set()
-
     for entry in feed.entries:
         published = parsed_entry_time(entry)
-        if published < cutoff:
-            continue
-
-        title = clean_text(entry.get("title", ""))
-        summary = clean_text(entry.get("summary", ""))
+        if published < cutoff: continue
+        title = clean_text(entry.get("title", "")); summary = clean_text(entry.get("summary", ""))
         combined = f"{title} {summary}".upper()
-
-        if ticker not in combined and company.upper() not in combined:
-            continue
-
+        if ticker not in combined and company.upper() not in combined: continue
         key = normalize_title(title)
-        if not key or key in seen:
-            continue
+        if not key or key in seen: continue
         seen.add(key)
-
-        source = ""
-        src = entry.get("source")
-        if isinstance(src, dict):
-            source = src.get("title", "")
-
+        src = entry.get("source"); source = src.get("title", "") if isinstance(src, dict) else "Google News"
         rows.append({
-            "ticker": ticker,
-            "title": title,
-            "source": source or "Google News",
-            "published": published.astimezone().strftime("%d/%m/%Y %H:%M"),
-            "date": published.astimezone().strftime("%d/%m/%Y"),
-            "published_dt": published,
-            "summary": summary,
-            "url": entry.get("link", ""),
+            "ticker":ticker,"tickers":[ticker],"title":title,"summary":summary,"source":source or "Google News",
+            "url":entry.get("link", ""),"published_dt":published,"published_at":published.isoformat(),
+            "published":published.astimezone().strftime("%d/%m/%Y %H:%M"),"date":published.astimezone().strftime("%d/%m/%Y"),
+            "region":"Việt Nam","market_topic":detect_sector(combined),
         })
-
-        if len(rows) >= max_items:
-            break
-
-    rows.sort(key=lambda x: x["published_dt"], reverse=True)
+        if len(rows) >= max_items: break
+    rows.sort(key=lambda x:x["published_dt"], reverse=True)
     return rows
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def fetch_article_text(url: str) -> str:
-    if not url:
-        return ""
-
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                      "AppleWebKit/537.36 Chrome/152 Safari/537.36"
-    }
+    if not url: return ""
     try:
-        r = requests.get(url, headers=headers, timeout=10)
-        if r.status_code != 200:
-            return ""
-
+        r = requests.get(url, headers={"User-Agent":"Mozilla/5.0"}, timeout=10)
+        if r.status_code != 200: return ""
         soup = BeautifulSoup(r.text, "html.parser")
-
-        for tag in soup(["script", "style", "noscript", "header", "footer", "nav", "aside"]):
-            tag.decompose()
-
-        candidates = []
-        for selector in [
-            "article", ".article-content", ".detail-content", ".content-detail",
-            ".fck_detail", ".entry-content", ".post-content", ".content"
-        ]:
+        for tag in soup(["script","style","noscript","header","footer","nav","aside"]): tag.decompose()
+        candidates=[]
+        for selector in ["article",".article-content",".detail-content",".fck_detail",".entry-content",".post-content",".content"]:
             for node in soup.select(selector):
-                text = clean_text(node.get_text(" ", strip=True))
-                if len(text) > 500:
-                    candidates.append(text)
-
-        if candidates:
-            return max(candidates, key=len)[:12000]
-
-        paras = [clean_text(p.get_text(" ", strip=True)) for p in soup.find_all("p")]
-        text = " ".join(x for x in paras if len(x) > 40)
-        return text[:12000]
+                text=clean_text(node.get_text(" ",strip=True))
+                if len(text)>500: candidates.append(text)
+        if candidates: return max(candidates,key=len)[:12000]
+        paras=[clean_text(p.get_text(" ",strip=True)) for p in soup.find_all("p")]
+        return " ".join(x for x in paras if len(x)>40)[:12000]
     except Exception:
         return ""
 
 
-def heuristic_sentiment(text: str):
-    text = text.lower()
-    positive_words = [
-        "tăng trưởng", "lợi nhuận tăng", "doanh thu tăng", "kỷ lục", "vượt kế hoạch",
-        "mở rộng", "trúng thầu", "cổ tức", "khởi sắc", "tích cực",
-        "được phê duyệt", "ký hợp đồng", "tăng mạnh", "bứt phá", "lập đỉnh"
-    ]
-    negative_words = [
-        "giảm lợi nhuận", "thua lỗ", "bị phạt", "điều tra", "khởi tố",
-        "giảm mạnh", "rủi ro", "nợ xấu", "suy giảm", "tiêu cực",
-        "trì hoãn", "cảnh báo"
-    ]
-    p = sum(w in text for w in positive_words)
-    n = sum(w in text for w in negative_words)
-
-    if p > n:
-        return "🟢 Tích cực"
-    if n > p:
-        return "🔴 Tiêu cực"
-    return "🟡 Trung lập"
-
-
 def classify_news(text: str) -> str:
-    s = text.lower()
-
-    if any(k in s for k in ["trái phiếu", "bond", "phát hành riêng lẻ", "lô trái phiếu"]):
-        return "Trái phiếu"
-    if any(k in s for k in [
-        "lãi suất", "tỷ giá", "usd", "fed", "gdp", "cpi", "lạm phát",
-        "vn-index", "ngân hàng nhà nước", "thuế", "chính sách", "nghị định"
-    ]):
-        return "Vĩ mô / Chính sách"
-    if any(k in s for k in [
-        "ngành", "thép", "ngân hàng", "bất động sản", "công nghệ", "bán lẻ",
-        "chứng khoán", "dầu khí", "thủy sản", "phân bón", "cao su",
-        "điện", "logistics", "hàng không"
-    ]):
-        return "Ngành"
-    return "Doanh nghiệp"
+    s=(text or "").lower()
+    if any(k in s for k in ["khởi tố","đình chỉ giao dịch","hủy niêm yết","thanh tra","kiểm toán"]): return "Pháp lý / Quản trị"
+    if any(k in s for k in ["lãi suất","tỷ giá","fed","gdp","cpi","lạm phát","nhnn","thuế quan"]): return "Vĩ mô / Chính sách"
+    if any(k in s for k in ["vn-index","s&p 500","nasdaq","dow jones","hang seng","nikkei"]): return "Thị trường"
+    if any(k in s for k in ["lợi nhuận","doanh thu","cổ tức","phát hành","m&a","sáp nhập"]): return "Doanh nghiệp"
+    return "Ngành / Doanh nghiệp"
 
 
-def extract_bond_info(text: str) -> str:
-    s = clean_text(text)
-    if not re.search(r"trái phiếu|bond", s, flags=re.I):
-        return "-"
-
-    amount = re.search(
-        r"((?:\d{1,3}(?:[.,]\d{3})+|\d+(?:[.,]\d+)?)\s*(?:tỷ|triệu)\s*đồng)",
-        s, flags=re.I
-    )
-    tenor = re.search(
-        r"(kỳ hạn\s*(?:từ\s*)?\d+(?:\s*[-–]\s*\d+)?\s*(?:năm|tháng))",
-        s, flags=re.I
-    )
-    rate = re.search(
-        r"(lãi suất[^.;,]{0,45}?\d+(?:[.,]\d+)?(?:\s*[-–]\s*\d+(?:[.,]\d+)?)?\s*%[^.;]{0,20})",
-        s, flags=re.I
-    )
-
-    parts = []
-    if amount:
-        parts.append(amount.group(1))
-    if tenor:
-        parts.append(tenor.group(1).replace("kỳ hạn", "").strip())
-    if rate:
-        rate_text = clean_text(rate.group(1))
-        rate_text = re.sub(r"^lãi suất\s*", "", rate_text, flags=re.I)
-        parts.append(rate_text)
-
-    return " | ".join(parts[:3]) if parts else "Có nhắc trái phiếu"
+def fallback_summary(item, article_text=""):
+    source=clean_text(article_text or item.get("summary","") or item.get("title",""))
+    title=clean_text(item.get("title",""))
+    sentences=re.split(r'(?<=[.!?])\s+', source)
+    numeric=[s for s in sentences if re.search(r"\d",s)]
+    other=[s for s in sentences if s not in numeric]
+    chosen=[clean_text(x) for x in (numeric+other)[:5] if len(clean_text(x))>25] or [title]
+    return chosen[:4]
 
 
-def fallback_detailed_summary(item, article_text=""):
-    source_text = clean_text(article_text or item.get("summary", "") or item.get("title", ""))
-    title = clean_text(item.get("title", ""))
-
-    if title and source_text.lower().startswith(title.lower()):
-        source_text = source_text[len(title):].lstrip(" -–—:")
-
-    # Tách câu và ưu tiên câu có số liệu.
-    sentences = re.split(r'(?<=[.!?])\s+', source_text)
-    numeric = [s for s in sentences if re.search(r"\d", s)]
-    other = [s for s in sentences if s not in numeric]
-
-    chosen = (numeric + other)[:5]
-    chosen = [clean_text(x) for x in chosen if len(clean_text(x)) > 25]
-
-    if not chosen:
-        chosen = [title]
-
-    bullets = chosen[:4]
-    quick = (
-        "Tin có thể đáng chú ý nếu ảnh hưởng đến doanh thu, lợi nhuận, dòng tiền, "
-        "cấu trúc vốn hoặc kỳ vọng thị trường. Nên đối chiếu bài gốc trước khi kết luận."
-    )
-    return bullets, quick
-
-
-def ai_detailed_summary(item, article_text, model):
-    api_key = os.getenv("OPENAI_API_KEY", "").strip()
-    if not api_key or OpenAI is None:
-        return None
-
-    evidence = article_text or item.get("summary", "")
-    client = OpenAI(api_key=api_key)
-
-    response = client.responses.create(
+def ai_summary(item, article_text, model):
+    key=os.getenv("OPENAI_API_KEY","").strip()
+    if not key or OpenAI is None: return None
+    client=OpenAI(api_key=key)
+    evidence=article_text or item.get("summary","")
+    resp=client.responses.create(
         model=model,
-        instructions=(
-            "Bạn là trợ lý phân tích tin chứng khoán Việt Nam. "
-            "Chỉ dùng dữ liệu được cung cấp, tuyệt đối không bịa số liệu. "
-            "Tóm tắt thành 4-6 bullet, ưu tiên số liệu quan trọng như doanh thu, "
-            "LNST, biên lợi nhuận, tăng trưởng, phát hành, dự án, lãi suất, kỳ hạn. "
-            "Sau đó thêm 1 mục 'Góc nhìn nhanh' 2 câu, không khuyến nghị mua/bán. "
-            "Nếu bài có thông tin trái phiếu, trích rõ quy mô phát hành, kỳ hạn, "
-            "lãi suất và mục đích sử dụng vốn nếu có."
-        ),
-        input=f"""
-Mã: {item['ticker']}
-Tiêu đề: {item['title']}
-Nguồn: {item['source']}
-Nội dung:
-{evidence[:12000]}
-""",
+        instructions=("Bạn là trợ lý phân tích tin chứng khoán. Chỉ dùng dữ liệu được cung cấp. "
+                      "Tóm tắt 4-6 bullet có số liệu, nêu catalyst, rủi ro và tác động đến doanh nghiệp/ngành. "
+                      "Không bịa dữ liệu và không đưa khuyến nghị mua/bán."),
+        input=f"Mã: {item.get('ticker','')}\nTiêu đề: {item.get('title','')}\nNguồn: {item.get('source','')}\nNội dung:\n{evidence[:12000]}"
     )
-    return response.output_text.strip()
+    return resp.output_text.strip()
 
 
-def merge_articles(all_news, watched_tickers):
-    grouped = {}
-
-    for item in all_news:
-        key = item["url"] or normalize_title(item["title"])
-
-        if key not in grouped:
-            grouped[key] = {**item, "tickers": set()}
-
+def merge_articles(rows, watched):
+    grouped={}
+    for item in rows:
+        key=item.get("url") or normalize_title(item.get("title",""))
+        if key not in grouped: grouped[key]={**item,"tickers":set(item.get("tickers",[]))}
         grouped[key]["tickers"].add(item["ticker"])
-
-        combined = f"{item['title']} {item['summary']}".upper()
-        for t in watched_tickers:
-            company = COMPANY_NAMES.get(t, "")
-            if re.search(rf"(?<![A-Z0-9]){re.escape(t)}(?![A-Z0-9])", combined):
-                grouped[key]["tickers"].add(t)
-            elif company and company.upper() in combined:
-                grouped[key]["tickers"].add(t)
-
-    rows = list(grouped.values())
-    rows.sort(key=lambda x: x["published_dt"], reverse=True)
-    return rows
+        combined=f"{item.get('title','')} {item.get('summary','')}"
+        grouped[key]["tickers"].update(extract_tickers(combined))
+        for t in watched:
+            if re.search(rf"(?<![A-Z0-9]){re.escape(t)}(?![A-Z0-9])", combined.upper()): grouped[key]["tickers"].add(t)
+    out=list(grouped.values())
+    out.sort(key=lambda x:x["published_dt"], reverse=True)
+    return out
 
 
-def process_article(item, use_ai=False, model="gpt-5.6-luna"):
-    article_text = fetch_article_text(item["url"])
-    item["article_text"] = article_text
-
-    if use_ai and os.getenv("OPENAI_API_KEY", "").strip():
-        try:
-            item["ai_detail"] = ai_detailed_summary(item, article_text, model)
-        except Exception:
-            item["ai_detail"] = None
-
-    item["bond_info"] = extract_bond_info(
-        f"{item['title']} {item['summary']} {article_text}"
-    )
+def process_article(item,use_ai=False,model="gpt-5.6"):
+    text=fetch_article_text(item.get("url","")); item["article_text"]=text
+    if use_ai:
+        try: item["ai_detail"]=ai_summary(item,text,model)
+        except Exception: item["ai_detail"]=None
+    combined=f"{item.get('title','')} {item.get('summary','')} {text}"
+    item["market_topic"]=detect_sector(combined); item["region"]=classify_region(combined,item.get("region",""))
     return item
 
 
-def make_table_row(item):
-    body = f"{item['title']} {item['summary']} {item.get('article_text','')}"
-    summary_source = item.get("article_text") or item.get("summary", "")
-    bullets, _ = fallback_detailed_summary(item, summary_source)
-    table_summary = " ".join(bullets[:2])
-    if len(table_summary) > 360:
-        table_summary = table_summary[:357].rstrip() + "..."
-
-    urgency = calculate_urgency(
-        item.get("title", ""), item.get("summary", ""), item.get("source", ""), item.get("tickers", [])
-    )
+def row_for_table(item):
+    bullets=fallback_summary(item,item.get("article_text","")); summary=" ".join(bullets[:2])[:360]
+    urg=calculate_urgency(item.get("title",""),item.get("summary",""),item.get("source",""),item.get("tickers",[]))
     return {
-        "Ngày": item["date"],
-        "Mã CK": ", ".join(sorted(item["tickers"])),
-        "Urgency": urgency["score"],
-        "Mức độ": urgency_badge(urgency["score"]),
-        "Tóm tắt thông tin": table_summary,
-        "Định giá trái phiếu": item.get("bond_info", "-"),
-        "Source": item["source"],
-        "Loại tin": classify_news(body),
-        "Đọc tin gốc": item["url"],
+        "Ngày":item.get("date") or str(item.get("published_at", ""))[:10],
+        "Mã CK":", ".join(sorted(item.get("tickers",[]))) or "Market",
+        "Urgency":urg["score"],"Mức độ":urgency_badge(urg["score"]),"Tóm tắt":summary,
+        "Impact":urg["impact"],"Ngành/Chủ đề":item.get("market_topic") or detect_sector(f"{item.get('title','')} {item.get('summary','')}"),
+        "Nguồn":item.get("source",""),"Đọc tin gốc":item.get("url","")
     }
 
 
-
-
-# ---------- BOND VALUATION HELPERS ----------
-import math
-import numpy as np
-
-
-def bond_price(face_value, coupon_rate, years, payments_per_year, required_yield):
-    """
-    Price a standard fixed-coupon bond.
-    Rates are entered as decimals, e.g. 8% = 0.08.
-    """
-    n = max(1, int(round(years * payments_per_year)))
-    coupon = face_value * coupon_rate / payments_per_year
-    r = required_yield / payments_per_year
-
-    if abs(r) < 1e-12:
-        return coupon * n + face_value
-
-    pv_coupons = coupon * (1 - (1 + r) ** (-n)) / r
-    pv_face = face_value / ((1 + r) ** n)
-    return pv_coupons + pv_face
-
-
-def solve_ytm(face_value, coupon_rate, years, payments_per_year, market_price):
-    """
-    Numerically solve nominal annual YTM compounded at payments_per_year.
-    """
-    n = max(1, int(round(years * payments_per_year)))
-    coupon = face_value * coupon_rate / payments_per_year
-
-    def f(y):
-        r = y / payments_per_year
-        if r <= -0.999999:
-            return 1e18
-        if abs(r) < 1e-12:
-            p = coupon * n + face_value
-        else:
-            p = sum(coupon / ((1 + r) ** t) for t in range(1, n + 1))
-            p += face_value / ((1 + r) ** n)
-        return p - market_price
-
-    low, high = -0.95, 5.0
-    f_low, f_high = f(low), f(high)
-
-    # Expand high if needed
-    while f_low * f_high > 0 and high < 100:
-        high *= 2
-        f_high = f(high)
-
-    if f_low * f_high > 0:
-        return None
-
-    for _ in range(200):
-        mid = (low + high) / 2
-        fm = f(mid)
-        if abs(fm) < 1e-8:
-            return mid
-        if f_low * fm <= 0:
-            high = mid
-        else:
-            low = mid
-            f_low = fm
-
-    return (low + high) / 2
-
-
-def bond_cashflows(face_value, coupon_rate, years, payments_per_year, required_yield):
-    n = max(1, int(round(years * payments_per_year)))
-    coupon = face_value * coupon_rate / payments_per_year
-    r = required_yield / payments_per_year
-
-    rows = []
-    for t in range(1, n + 1):
-        cf = coupon + (face_value if t == n else 0)
-        pv = cf / ((1 + r) ** t) if abs(r) > 1e-12 else cf
-        rows.append({
-            "Kỳ": t,
-            "Thời gian (năm)": round(t / payments_per_year, 4),
-            "Coupon": round(coupon, 2),
-            "Gốc": round(face_value if t == n else 0, 2),
-            "Dòng tiền": round(cf, 2),
-            "PV dòng tiền": round(pv, 2),
-        })
-    return pd.DataFrame(rows)
-
-
-def macaulay_duration(face_value, coupon_rate, years, payments_per_year, required_yield):
-    n = max(1, int(round(years * payments_per_year)))
-    coupon = face_value * coupon_rate / payments_per_year
-    r = required_yield / payments_per_year
-
-    price = bond_price(face_value, coupon_rate, years, payments_per_year, required_yield)
-    weighted = 0.0
-
-    for t in range(1, n + 1):
-        cf = coupon + (face_value if t == n else 0)
-        pv = cf / ((1 + r) ** t) if abs(r) > 1e-12 else cf
-        time_years = t / payments_per_year
-        weighted += time_years * pv
-
-    return weighted / price if price else None
-
-
-def modified_duration(face_value, coupon_rate, years, payments_per_year, required_yield):
-    mac = macaulay_duration(face_value, coupon_rate, years, payments_per_year, required_yield)
-    if mac is None:
-        return None
-    return mac / (1 + required_yield / payments_per_year)
-
-
-def classify_bond(price, face_value):
-    if abs(price - face_value) / face_value < 0.002:
-        return "Par"
-    return "Premium" if price > face_value else "Discount"
-
-
-def fmt_money(x):
-    return f"{x:,.0f}".replace(",", ".")
-
-
-def fmt_pct(x):
-    return f"{x*100:.2f}%".replace(".", ",")
-
-
-BOND_PRESETS = {
-    "Tự nhập": None,
-    "Ví dụ A – Coupon 8%, 5 năm": {
-        "code": "BOND-A",
-        "face": 100000,
-        "coupon": 8.0,
-        "years": 5.0,
-        "freq": 2,
-        "market_price": 96500,
-        "required_yield": 9.0,
-    },
-    "Ví dụ B – Coupon 10%, 3 năm": {
-        "code": "BOND-B",
-        "face": 100000,
-        "coupon": 10.0,
-        "years": 3.0,
-        "freq": 1,
-        "market_price": 104500,
-        "required_yield": 8.0,
-    },
-    "Ví dụ C – Zero-coupon 4 năm": {
-        "code": "ZERO-C",
-        "face": 100000,
-        "coupon": 0.0,
-        "years": 4.0,
-        "freq": 1,
-        "market_price": 73500,
-        "required_yield": 8.0,
-    },
-}
-
-
-st.markdown('<div class="dashboard-title">📈 Stock News & Bond Analytics</div>', unsafe_allow_html=True)
-st.markdown(
-    '<div class="dashboard-sub">Theo dõi tin chứng khoán và định giá trái phiếu trong cùng một dashboard</div>',
-    unsafe_allow_html=True
-)
-
-tab_news, tab_bond, tab_alerts = st.tabs(["📰 Stock News", "💵 Bond Valuation", "🔔 Alerts & Urgency"])
-
-
-# ============================================================
-# TAB 1: STOCK NEWS
-# ============================================================
-with tab_news:
-    with st.sidebar:
-        st.header("Stock News")
-        ticker_text = st.text_input(
-            "Mã cổ phiếu",
-            value="FPT, TCB, VIC, VHM, PVS",
-            placeholder="VD: FPT, SSI, VCB",
-            key="news_tickers",
-        )
-        days = st.selectbox("Khoảng tin", [1, 3, 7, 14, 30], index=2, key="news_days")
-        max_items = st.slider("Số bài tối đa / mã", 5, 30, 12, 1, key="news_max")
-        use_ai = st.toggle("Dùng AI để tóm tắt sâu", value=False, key="news_ai")
-        model = st.text_input(
-            "OpenAI model",
-            value=os.getenv("OPENAI_MODEL", "gpt-5.6-luna"),
-            disabled=not use_ai,
-            key="news_model",
-        )
-        run = st.button("🔎 Quét và phân tích", type="primary", use_container_width=True, key="news_run")
-
-    tickers = []
-    for part in ticker_text.split(","):
-        t = part.strip().upper()
-        if t and t not in tickers:
-            tickers.append(t)
-
-    if "merged_news" not in st.session_state:
-        st.session_state.merged_news = []
-
-    if run and tickers:
-        all_news = []
-        with st.spinner("Đang lấy tin..."):
-            for ticker in tickers:
-                all_news.extend(fetch_google_news(ticker, days, max_items))
-
-        merged = merge_articles(all_news, tickers)
-
-        progress = st.progress(0)
-        status = st.empty()
-        processed = []
-
-        for i, item in enumerate(merged):
-            status.write(f"Đang đọc bài {i+1}/{len(merged)}: {item['title'][:80]}...")
-            processed.append(process_article(item, use_ai, model))
-            progress.progress((i + 1) / max(1, len(merged)))
-
-        status.empty()
-        progress.empty()
-        st.session_state.merged_news = processed
-
-    merged = st.session_state.merged_news
-
-    if not tickers:
-        st.warning("Nhập ít nhất một mã cổ phiếu.")
-    elif not merged:
-        st.info("Nhấn **Quét và phân tích** để tạo dashboard.")
-    else:
-        c1, c2, c3, c4 = st.columns(4)
-        c1.metric("Tin đã quét", len(merged))
-        c2.metric("Mã theo dõi", len(tickers))
-        c3.metric("Tin trái phiếu", sum(1 for x in merged if x.get("bond_info", "-") != "-"))
-        c4.metric("Nguồn báo", len(set(x["source"] for x in merged)))
-
-        st.markdown("### 📰 Tin mới đáng chú ý")
-        overview_df = pd.DataFrame([make_table_row(x) for x in merged])
-
-        st.dataframe(
-            overview_df,
-            hide_index=True,
-            use_container_width=True,
-            height=min(760, 92 + 74 * len(overview_df)),
-            column_config={
-                "Ngày": st.column_config.TextColumn("Ngày", width="small"),
-                "Mã CK": st.column_config.TextColumn("Mã CK", width="small"),
-                "Urgency": st.column_config.ProgressColumn("Urgency", min_value=0, max_value=100, format="%d"),
-                "Mức độ": st.column_config.TextColumn("Mức độ", width="small"),
-                "Tóm tắt thông tin": st.column_config.TextColumn("Tóm tắt thông tin", width="large"),
-                "Định giá trái phiếu": st.column_config.TextColumn("Thông tin trái phiếu", width="medium"),
-                "Source": st.column_config.TextColumn("Source", width="small"),
-                "Loại tin": st.column_config.TextColumn("Loại tin", width="small"),
-                "Đọc tin gốc": st.column_config.LinkColumn(
-                    "Đọc tin gốc", display_text="Mở bài ↗", width="small"
-                ),
-            },
-        )
-
-        st.download_button(
-            "⬇️ Tải bảng tin CSV",
-            data=overview_df.to_csv(index=False).encode("utf-8-sig"),
-            file_name="stock_news_dashboard.csv",
-            mime="text/csv",
-            key="news_csv",
-        )
-
-        st.divider()
-        st.markdown("### 🔎 Chi tiết từng tin")
-
-        for i, item in enumerate(merged, start=1):
-            tickers_text = ", ".join(sorted(item["tickers"]))
-            body = f"{item['title']} {item['summary']} {item.get('article_text','')}"
-            sentiment = heuristic_sentiment(body)
-            news_type = classify_news(body)
-            urgency = calculate_urgency(item.get("title", ""), item.get("summary", ""), item.get("source", ""), item.get("tickers", []))
-            bullets, quick = fallback_detailed_summary(item, item.get("article_text", ""))
-
-            with st.expander(f"{i}. [{tickers_text}] {item['title']}", expanded=(i == 1)):
-                top1, top2, top3, top4 = st.columns([1, 1, 1, 1.25])
-                top1.write(f"**📅 Ngày:** {item['published']}")
-                top2.write(f"**🏷 Loại tin:** {news_type}")
-                top3.write(f"**Đánh giá sơ bộ:** {sentiment}")
-                top4.write(f"**🔗 Nguồn:** {item['source']}")
-
-                urgent_class = "urgency-critical" if urgency["score"] >= 90 else "urgency-high" if urgency["score"] >= 70 else "summary-box"
-                st.markdown(
-                    f'<div class="{urgent_class}"><b>⚡ Urgency: {urgency["score"]}/100 — {urgency_badge(urgency["score"])}</b>'
-                    f'<br><span class="small-muted">Impact: {urgency["impact"]} · Scope: {urgency["market_scope"]} · '
-                    f'{" · ".join(urgency["reasons"])}</span></div>',
-                    unsafe_allow_html=True
-                )
-
-                left, right = st.columns([3.2, 1.25])
-
-                with left:
-                    st.markdown("**Tóm tắt chi tiết:**")
-
-                    if item.get("ai_detail"):
-                        st.markdown(item["ai_detail"])
-                    else:
-                        for b in bullets:
-                            st.markdown(f"- {b}")
-
-                        if len(bullets) < 3:
-                            st.caption(
-                                "Bài gốc chưa trích xuất được nhiều nội dung nên phần tóm tắt "
-                                "đang dựa trên đoạn mô tả công khai của nguồn."
-                            )
-
-                    st.markdown(
-                        f'<div class="quick-view"><b>📈 Góc nhìn nhanh:</b> {quick}</div>',
-                        unsafe_allow_html=True
-                    )
-
-                    if item["url"]:
-                        st.link_button("📰 Đọc tin gốc", item["url"])
-
-                with right:
-                    st.markdown("**💵 Thông tin trái phiếu (nếu có)**")
-                    bond = item.get("bond_info", "-")
-                    if bond == "-":
-                        st.write("Không có thông tin trái phiếu rõ ràng trong bài này.")
-                    else:
-                        st.write(bond)
-                        st.caption("Qua tab **Bond Valuation** để định giá theo YTM/fair value.")
-
-
-# ============================================================
-# TAB 2: BOND VALUATION
-# ============================================================
-with tab_bond:
-    st.markdown("### 💵 Định giá trái phiếu")
-    st.caption(
-        "Nhập dữ liệu trái phiếu để tính giá lý thuyết, YTM, premium/discount, "
-        "duration và bảng dòng tiền."
-    )
-
-    preset_name = st.selectbox(
-        "Chọn dữ liệu mẫu để test nhanh",
-        list(BOND_PRESETS.keys()),
-        index=1,
-        key="bond_preset",
-    )
-    preset = BOND_PRESETS[preset_name]
-
-    d_code = preset["code"] if preset else "TCB-BOND-01"
-    d_face = preset["face"] if preset else 100000
-    d_coupon = preset["coupon"] if preset else 8.0
-    d_years = preset["years"] if preset else 5.0
-    d_freq = preset["freq"] if preset else 2
-    d_market = preset["market_price"] if preset else 96500
-    d_yield = preset["required_yield"] if preset else 9.0
-
-    with st.form("bond_form"):
-        r1c1, r1c2, r1c3 = st.columns(3)
-        bond_code = r1c1.text_input("Mã / tên trái phiếu", value=d_code)
-        face_value = r1c2.number_input(
-            "Mệnh giá", min_value=1.0, value=float(d_face), step=1000.0
-        )
-        coupon_pct = r1c3.number_input(
-            "Coupon rate (%/năm)", min_value=0.0, value=float(d_coupon), step=0.1
-        )
-
-        r2c1, r2c2, r2c3 = st.columns(3)
-        years = r2c1.number_input(
-            "Thời gian còn lại đến đáo hạn (năm)",
-            min_value=0.01, value=float(d_years), step=0.5
-        )
-        freq_label = r2c2.selectbox(
-            "Tần suất trả coupon",
-            ["Hàng năm", "Nửa năm", "Hàng quý", "Hàng tháng"],
-            index={1:0, 2:1, 4:2, 12:3}.get(d_freq, 1)
-        )
-        market_price = r2c3.number_input(
-            "Giá thị trường", min_value=0.01, value=float(d_market), step=500.0
-        )
-
-        r3c1, r3c2 = st.columns(2)
-        required_yield_pct = r3c1.number_input(
-            "Required yield / Market yield (%/năm)",
-            min_value=0.0, value=float(d_yield), step=0.1
-        )
-        calc_mode = r3c2.radio(
-            "Mục tiêu",
-            ["Tính giá lý thuyết", "Tính YTM từ giá thị trường"],
-            horizontal=True
-        )
-
-        submitted = st.form_submit_button(
-            "🧮 Tính định giá",
-            type="primary",
-            use_container_width=True
-        )
-
-    freq_map = {"Hàng năm": 1, "Nửa năm": 2, "Hàng quý": 4, "Hàng tháng": 12}
-    m = freq_map[freq_label]
-
-    coupon_rate = coupon_pct / 100
-    required_yield = required_yield_pct / 100
-
-    # Always show results after any render; form values are current.
-    fair_price = bond_price(face_value, coupon_rate, years, m, required_yield)
-    ytm = solve_ytm(face_value, coupon_rate, years, m, market_price)
-    mac_dur = macaulay_duration(face_value, coupon_rate, years, m, required_yield)
-    mod_dur = modified_duration(face_value, coupon_rate, years, m, required_yield)
-
-    if calc_mode == "Tính giá lý thuyết":
-        main_value = fair_price
-        difference = market_price - fair_price
-        status = (
-            "Giá thị trường cao hơn giá lý thuyết"
-            if difference > 0 else
-            "Giá thị trường thấp hơn giá lý thuyết"
-            if difference < 0 else
-            "Giá thị trường xấp xỉ giá lý thuyết"
-        )
-    else:
-        main_value = ytm if ytm is not None else float("nan")
-        difference = (ytm - coupon_rate) if ytm is not None else None
-        status = (
-            "YTM > Coupon → trái phiếu thường giao dịch Discount"
-            if ytm is not None and ytm > coupon_rate else
-            "YTM < Coupon → trái phiếu thường giao dịch Premium"
-            if ytm is not None and ytm < coupon_rate else
-            "YTM xấp xỉ Coupon → gần Par"
-            if ytm is not None else
-            "Không giải được YTM với bộ dữ liệu hiện tại"
-        )
-
-    st.markdown("#### Kết quả")
-    k1, k2, k3, k4 = st.columns(4)
-
-    if calc_mode == "Tính giá lý thuyết":
-        k1.metric("Giá lý thuyết", fmt_money(fair_price))
-    else:
-        k1.metric("YTM", fmt_pct(ytm) if ytm is not None else "N/A")
-
-    k2.metric("Giá thị trường", fmt_money(market_price))
-    k3.metric("Coupon", f"{coupon_pct:.2f}%")
-    k4.metric("Phân loại theo mệnh giá", classify_bond(market_price, face_value))
-
-    q1, q2, q3 = st.columns(3)
-    q1.metric("Macaulay Duration", f"{mac_dur:.2f} năm" if mac_dur is not None else "N/A")
-    q2.metric("Modified Duration", f"{mod_dur:.2f}" if mod_dur is not None else "N/A")
-    q3.metric("YTM từ giá thị trường", fmt_pct(ytm) if ytm is not None else "N/A")
-
-    st.info(f"**{bond_code}:** {status}")
-
-    if calc_mode == "Tính giá lý thuyết":
-        diff_pct = (market_price / fair_price - 1) * 100 if fair_price else 0
-        st.write(
-            f"Chênh lệch giá thị trường so với giá lý thuyết: "
-            f"**{fmt_money(difference)}** ({diff_pct:+.2f}%)."
-        )
-    else:
-        if ytm is not None:
-            st.write(
-                f"YTM ước tính là **{fmt_pct(ytm)}**, so với coupon "
-                f"**{coupon_pct:.2f}%/năm**."
-            )
-
-    st.markdown("#### Dòng tiền trái phiếu")
-    cashflow_df = bond_cashflows(
-        face_value, coupon_rate, years, m,
-        required_yield if calc_mode == "Tính giá lý thuyết" else (ytm or required_yield)
-    )
-    st.dataframe(
-        cashflow_df,
-        hide_index=True,
-        use_container_width=True,
-        column_config={
-            "Kỳ": st.column_config.NumberColumn("Kỳ"),
-            "Thời gian (năm)": st.column_config.NumberColumn("Thời gian (năm)", format="%.2f"),
-            "Coupon": st.column_config.NumberColumn("Coupon", format="%.0f"),
-            "Gốc": st.column_config.NumberColumn("Gốc", format="%.0f"),
-            "Dòng tiền": st.column_config.NumberColumn("Dòng tiền", format="%.0f"),
-            "PV dòng tiền": st.column_config.NumberColumn("PV dòng tiền", format="%.0f"),
-        }
-    )
-
-    st.download_button(
-        "⬇️ Tải bảng cash flow CSV",
-        data=cashflow_df.to_csv(index=False).encode("utf-8-sig"),
-        file_name=f"{bond_code}_cashflows.csv",
-        mime="text/csv",
-        key="bond_csv",
-    )
-
-    st.markdown("#### Cách đọc nhanh")
-    st.write(
-        "- **Giá lý thuyết**: PV của toàn bộ coupon + mệnh giá chiết khấu theo required yield.\n"
-        "- **YTM**: mức lợi suất làm PV dòng tiền bằng đúng giá thị trường.\n"
-        "- **Premium**: giá thị trường > mệnh giá; **Discount**: giá thị trường < mệnh giá.\n"
-        "- **Modified Duration**: xấp xỉ % thay đổi giá khi yield thay đổi 1 điểm phần trăm."
-    )
-
-st.caption(
-    "⚠️ Công cụ phục vụ học tập/phân tích. Bond Valuation đang giả định trái phiếu coupon cố định, "
-    "dòng tiền đều và không xét default risk, call/put option, thuế hay accrued interest."
-)
-
-# ============================================================
-# TAB 3: ALERTS & URGENCY
-# ============================================================
-with tab_alerts:
-    st.markdown("### 🔔 News Alert & Urgency System")
-    st.caption(
-        "Pipeline nền quét tin mỗi 20 phút, chấm điểm urgency và chỉ gửi Gmail ở các mốc "
-        "07:00 · 09:00 · 12:00 · 17:00 (Asia/Ho_Chi_Minh)."
-    )
-
-    try:
-        stats = stats_today()
-    except Exception as exc:
-        stats = {"scanned": 0, "urgent": 0, "critical": 0, "sent": 0}
-        st.warning(f"Chưa đọc được kho dữ liệu alert: {exc}")
-
-    a1, a2, a3, a4 = st.columns(4)
-    a1.metric("Tin hệ thống đã quét", stats["scanned"])
-    a2.metric("Urgent ≥ 70", stats["urgent"])
-    a3.metric("Critical ≥ 90", stats["critical"])
-    a4.metric("Tin đã gửi email", stats["sent"])
-
-    st.markdown(
-        f'<div class="alert-panel"><b>System status:</b> 🟢 Ready &nbsp; '
-        f'| &nbsp; <b>Storage:</b> {backend_name()} &nbsp; '
-        f'| &nbsp; <b>Refresh:</b> 20 phút &nbsp; '
-        f'| &nbsp; <b>Delivery:</b> 07:00 · 09:00 · 12:00 · 17:00</div>',
-        unsafe_allow_html=True,
-    )
-
-    st.markdown("#### 📬 Cấu hình nhận Gmail")
-    c1, c2 = st.columns([2.2, 1])
+def filter_by_days(rows,days):
+    cutoff=datetime.now(timezone.utc)-timedelta(days=days); out=[]
+    for a in rows:
+        try:
+            dt=datetime.fromisoformat(str(a.get("published_at","")).replace("Z","+00:00"))
+            if dt>=cutoff: out.append(a)
+        except Exception: out.append(a)
+    return out
+
+
+def render_market_synthesis(rows,title="🌐 Tổng kết thị trường, ngành & kinh tế"):
+    synth=market_synthesis(rows)
+    st.markdown(f"### {title}")
+    st.markdown(f'<div class="market-box"><b>Trạng thái chung: {synth["tone"]}</b><br>{synth["headline"]}</div>', unsafe_allow_html=True)
+    for b in synth.get("bullets",[]): st.markdown(f"- {b}")
+    c1,c2=st.columns(2)
     with c1:
-        alert_email = st.text_input(
-            "Email nhận Market Digest",
-            placeholder="yourname@gmail.com",
-            key="alert_email",
-        )
+        st.markdown("**📈 Catalyst / tín hiệu tích cực nổi bật**")
+        if synth["opportunities"]:
+            for x in synth["opportunities"]: st.markdown(f"- {x}")
+        else: st.caption("Chưa có catalyst rõ ràng trong tập tin hiện tại.")
     with c2:
-        threshold = st.slider(
-            "Minimum urgency",
-            min_value=50,
-            max_value=95,
-            value=70,
-            step=5,
-            key="alert_threshold",
-        )
+        st.markdown("**⚠️ Rủi ro nổi bật**")
+        if synth["risks"]:
+            for x in synth["risks"]: st.markdown(f"- {x}")
+        else: st.caption("Chưa có rủi ro nổi bật trong tập tin hiện tại.")
 
-    b1, b2 = st.columns(2)
-    if b1.button("✅ Bật / cập nhật email alerts", type="primary", use_container_width=True):
-        if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", alert_email or ""):
-            st.error("Email chưa đúng định dạng.")
-        else:
-            try:
-                upsert_subscriber(alert_email, threshold, True)
-                st.success(f"Đã bật alerts cho {alert_email} với ngưỡng {threshold}/100.")
-            except Exception as exc:
-                st.error(f"Không lưu được cấu hình: {exc}")
 
-    if b2.button("🔕 Tắt alerts cho email này", use_container_width=True):
-        if not alert_email:
-            st.warning("Nhập email cần tắt alerts.")
-        else:
-            try:
-                disable_subscriber(alert_email)
-                st.success(f"Đã tắt alerts cho {alert_email}.")
-            except Exception as exc:
-                st.error(f"Không cập nhật được: {exc}")
+st.markdown('<div class="dashboard-title">📈 Market Intelligence V5.1</div>',unsafe_allow_html=True)
+st.markdown('<div class="dashboard-sub">News intelligence · Investment thesis · Broad-market urgency alerts</div>',unsafe_allow_html=True)
 
-    if not supabase_enabled():
-        st.info(
-            "Hiện app đang dùng SQLite local để test. Khi deploy, thêm SUPABASE_URL và SUPABASE_KEY "
-            "để pipeline GitHub Actions và Streamlit dùng chung một database."
-        )
+tab_news,tab_thesis,tab_alerts=st.tabs(["📰 Market Intelligence","🎯 Investment Thesis","🔔 Alerts & Urgency"])
 
-    st.markdown("#### ⚡ Tin mới theo Urgency")
-    alert_filter = st.segmented_control(
-        "Hiển thị",
-        options=["HIGH + CRITICAL", "CRITICAL only", "Tất cả"],
-        default="HIGH + CRITICAL",
-        key="urgency_filter",
-    )
-    min_score = 70 if alert_filter == "HIGH + CRITICAL" else 90 if alert_filter == "CRITICAL only" else 0
-
-    try:
-        recent = get_recent_articles(limit=80, min_score=min_score)
-    except Exception as exc:
-        recent = []
-        st.error(f"Không tải được news alert: {exc}")
-
-    if not recent:
-        st.info(
-            "Chưa có dữ liệu trong alert database. Sau khi cấu hình Supabase, chạy workflow "
-            "**Update Financial News** một lần bằng nút Run workflow để nạp tin đầu tiên."
-        )
+with tab_news:
+    try: market_rows=get_recent_articles(limit=220,min_score=0)
+    except Exception: market_rows=[]
+    if market_rows:
+        render_market_synthesis(market_rows)
     else:
-        alert_rows = []
-        for a in recent:
-            tickers_val = a.get("tickers") or []
-            if isinstance(tickers_val, str):
-                tickers_val = [tickers_val]
-            alert_rows.append({
-                "Urgency": int(a.get("urgency_score", 0)),
-                "Mức độ": urgency_badge(int(a.get("urgency_score", 0))),
-                "Mã CK": ", ".join(tickers_val),
-                "Tiêu đề": a.get("title", ""),
-                "Impact": a.get("impact", ""),
-                "Scope": a.get("market_scope", ""),
-                "Nguồn": a.get("source", ""),
-                "Đã email": "✅" if a.get("email_sent") else "—",
-                "Đọc tin": a.get("url", ""),
-            })
-        alert_df = pd.DataFrame(alert_rows)
-        st.dataframe(
-            alert_df,
-            hide_index=True,
-            use_container_width=True,
-            column_config={
-                "Urgency": st.column_config.ProgressColumn("Urgency", min_value=0, max_value=100, format="%d"),
-                "Mức độ": st.column_config.TextColumn("Mức độ", width="small"),
-                "Mã CK": st.column_config.TextColumn("Mã CK", width="small"),
-                "Tiêu đề": st.column_config.TextColumn("Tiêu đề", width="large"),
-                "Impact": st.column_config.TextColumn("Impact", width="small"),
-                "Scope": st.column_config.TextColumn("Scope", width="small"),
-                "Nguồn": st.column_config.TextColumn("Nguồn", width="small"),
-                "Đã email": st.column_config.TextColumn("Đã email", width="small"),
-                "Đọc tin": st.column_config.LinkColumn("Đọc tin", display_text="Mở bài ↗", width="small"),
-            },
-        )
+        st.info("Chưa có dữ liệu thị trường nền. Sau khi cấu hình Supabase, chạy workflow **Update Financial News** để nạp tin toàn thị trường.")
 
-        with st.expander("🧠 Cách hệ thống quyết định Urgency"):
-            st.markdown(
-                """
-- **90–100 · CRITICAL:** khởi tố/bắt giữ, đình chỉ hoặc hủy niêm yết, vỡ nợ, stress thị trường rất mạnh, sự kiện chính sách đặc biệt lớn.
-- **70–89 · HIGH:** thay đổi lãi suất/chính sách quan trọng, kiểm toán bất lợi, lợi nhuận biến động mạnh, M&A, nghĩa vụ trái phiếu và sự kiện doanh nghiệp có tác động cao.
-- **45–69 · MEDIUM:** tin đáng theo dõi nhưng chưa đủ mạnh để mặc định gửi email.
-- **0–44 · LOW:** nhận định, dự báo hoặc tin ít có khả năng làm thay đổi kỳ vọng thị trường ngay lập tức.
+    st.divider(); st.markdown("### 🔎 Phân tích sâu theo mã cổ phiếu")
+    with st.sidebar:
+        st.header("Market Intelligence")
+        ticker_text=st.text_input("Mã cổ phiếu cần phân tích",value="FPT, TCB, VIC, VHM, PVS",placeholder="VD: FPT, SSI, VCB")
+        days=st.selectbox("Khoảng tin",[1,3,7,14,30],index=2)
+        max_items=st.slider("Số bài tối đa / mã",5,30,12)
+        use_ai=st.toggle("Dùng AI để tóm tắt sâu",value=False)
+        model=st.text_input("OpenAI model",value=os.getenv("OPENAI_MODEL","gpt-5.6"),disabled=not use_ai)
+        run=st.button("🔎 Quét và phân tích",type="primary",use_container_width=True)
+    tickers=[]
+    for part in ticker_text.split(","):
+        t=part.strip().upper()
+        if t and t not in tickers: tickers.append(t)
+    if "merged_news" not in st.session_state: st.session_state.merged_news=[]
+    if run and tickers:
+        all_news=[]
+        with st.spinner("Đang lấy và đọc tin..."):
+            for t in tickers: all_news.extend(fetch_google_news(t,days,max_items))
+            merged=merge_articles(all_news,tickers)
+            processed=[]; prog=st.progress(0)
+            for i,item in enumerate(merged):
+                processed.append(process_article(item,use_ai,model)); prog.progress((i+1)/max(1,len(merged)))
+            prog.empty(); st.session_state.merged_news=processed
+    merged=st.session_state.merged_news
+    if merged:
+        render_market_synthesis(merged,"🧭 Tổng kết riêng cho các mã đang phân tích")
+        c1,c2,c3,c4=st.columns(4)
+        c1.metric("Tin đã quét",len(merged)); c2.metric("Mã theo dõi",len(tickers)); c3.metric("HIGH/CRITICAL",sum(calculate_urgency(x.get('title',''),x.get('summary',''),x.get('source',''),x.get('tickers',[]))["score"]>=70 for x in merged)); c4.metric("Nguồn báo",len(set(x.get("source","") for x in merged)))
+        df=pd.DataFrame([row_for_table(x) for x in merged])
+        st.dataframe(df,hide_index=True,use_container_width=True,column_config={"Urgency":st.column_config.ProgressColumn("Urgency",min_value=0,max_value=100),"Đọc tin gốc":st.column_config.LinkColumn("Đọc tin gốc",display_text="Mở bài ↗")})
+        st.download_button("⬇️ Tải bảng tin CSV",data=df.to_csv(index=False).encode("utf-8-sig"),file_name="market_intelligence_v51.csv",mime="text/csv")
+        st.markdown("### 🔎 Chi tiết từng tin")
+        for i,item in enumerate(merged,1):
+            urg=calculate_urgency(item.get("title",""),item.get("summary",""),item.get("source",""),item.get("tickers",[])); bullets=fallback_summary(item,item.get("article_text",""))
+            with st.expander(f"{i}. [{', '.join(sorted(item.get('tickers',[]))) or 'Market'}] {item.get('title','')}",expanded=(i==1)):
+                a,b,c,d=st.columns(4); a.write(f"**📅 {item.get('published','')}**"); b.write(f"**🏷 {classify_news(item.get('title','')+' '+item.get('summary',''))}**"); c.write(f"**{item.get('market_topic','')}**"); d.write(f"**🔗 {item.get('source','')}**")
+                cls="urgency-critical" if urg["score"]>=90 else "urgency-high" if urg["score"]>=70 else "quick-view"
+                st.markdown(f'<div class="{cls}"><b>⚡ {urgency_badge(urg["score"])} · {urg["score"]}/100</b><br><span class="small-muted">Impact: {urg["impact"]} · Scope: {urg["market_scope"]} · {" · ".join(urg["reasons"])}</span></div>',unsafe_allow_html=True)
+                st.markdown("**Tóm tắt chi tiết:**")
+                if item.get("ai_detail"): st.markdown(item["ai_detail"])
+                else:
+                    for bullet in bullets: st.markdown(f"- {bullet}")
+                if item.get("url"): st.link_button("📰 Đọc tin gốc",item["url"])
+    else:
+        st.info("Nhập mã và nhấn **Quét và phân tích** để xem phân tích chuyên sâu theo cổ phiếu.")
 
-Điểm còn được điều chỉnh theo vị trí từ khóa trong tiêu đề, số liệu định lượng, mã cổ phiếu liên quan và độ tin cậy của nguồn.
-                """
-            )
+with tab_thesis:
+    st.markdown("### 🎯 Investment Thesis từ news flow")
+    st.caption("Thay thế Bond Valuation của V5. Tab này gom nhiều bài báo của cùng một mã để hình thành bull case, bear case, catalyst và risk. Không phải định giá mục tiêu.")
+    try: thesis_db=get_recent_articles(limit=500,min_score=0)
+    except Exception: thesis_db=[]
+    combined=list(thesis_db)
+    known={a.get("url") for a in combined}
+    for x in st.session_state.get("merged_news",[]):
+        if x.get("url") not in known:
+            urg=calculate_urgency(x.get("title",""),x.get("summary",""),x.get("source",""),x.get("tickers",[]))
+            combined.append({**x,"urgency_score":urg["score"],"urgency_level":urg["level"],"impact":urg["impact"],"market_scope":urg["market_scope"],"reasons":urg["reasons"]})
+    t1,t2=st.columns([1.4,1])
+    ticker_thesis=t1.text_input("Mã cổ phiếu",value="FPT",key="thesis_ticker").strip().upper()
+    thesis_days=t2.selectbox("News lookback",[3,7,14,30],index=1,key="thesis_days")
+    scoped=filter_by_days(combined,thesis_days)
+    thesis=investment_thesis(ticker_thesis,scoped)
+    m1,m2,m3=st.columns(3); m1.metric("Quan điểm news-flow",thesis["stance"]); m2.metric("Độ tin cậy",thesis["confidence"]); m3.metric("Số bài bằng chứng",thesis["evidence_count"])
+    st.markdown(f'<div class="thesis-box">{thesis["summary"]}</div>',unsafe_allow_html=True)
+    c1,c2=st.columns(2)
+    with c1:
+        st.markdown("#### 📈 Bull case")
+        if thesis["bull"]:
+            for x in thesis["bull"]: st.markdown(f"- {x}")
+        else: st.caption("Chưa có luận cứ tích cực đủ rõ.")
+        st.markdown("#### 🚀 Catalyst")
+        for x in thesis["catalysts"] or ["Chưa có catalyst rõ ràng trong news flow."]: st.markdown(f"- {x}")
+    with c2:
+        st.markdown("#### 📉 Bear case")
+        if thesis["bear"]:
+            for x in thesis["bear"]: st.markdown(f"- {x}")
+        else: st.caption("Chưa có luận cứ tiêu cực đủ rõ.")
+        st.markdown("#### ⚠️ Risk")
+        for x in thesis["risks"] or ["Chưa có risk headline nổi bật trong news flow."]: st.markdown(f"- {x}")
+    st.info("Cách dùng: coi đây là lớp **news/catalyst thesis**. Trước quyết định đầu tư vẫn nên đối chiếu định giá, BCTC, dòng tiền và mức chịu rủi ro của chính bạn.")
 
+with tab_alerts:
+    st.markdown("### 🔔 Broad-Market Alerts & Urgency")
+    st.caption("V5.1 quét rộng thị trường Việt Nam, doanh nghiệp niêm yết, ngành, vĩ mô và các biến số quốc tế có thể tác động tới chứng khoán. Không còn phụ thuộc danh sách WATCH_TICKERS.")
+    try: stats=stats_today()
+    except Exception as exc:
+        stats={"scanned":0,"urgent":0,"critical":0,"sent":0}; st.warning(f"Chưa đọc được kho alert: {exc}")
+    a,b,c,d=st.columns(4); a.metric("Tin đã quét hôm nay",stats["scanned"]); b.metric("Urgent ≥70",stats["urgent"]); c.metric("Critical ≥90",stats["critical"]); d.metric("Tin đã gửi",stats["sent"])
+    st.markdown(f'<div class="alert-panel"><b>System:</b> 🟢 Ready &nbsp; | &nbsp; <b>Storage:</b> {backend_name()} &nbsp; | &nbsp; <b>Scan:</b> 20 phút &nbsp; | &nbsp; <b>Delivery:</b> 07:00 · 09:00 · 12:00 · 17:00 &nbsp; | &nbsp; <b>Email:</b> Resend API</div>',unsafe_allow_html=True)
+    st.markdown("#### 📬 Cấu hình nhận Market Digest")
+    c1,c2=st.columns([2.2,1]); alert_email=c1.text_input("Email nhận digest",placeholder="yourname@gmail.com",key="alert_email"); threshold=c2.slider("Minimum urgency",50,95,70,5,key="alert_threshold")
+    b1,b2=st.columns(2)
+    if b1.button("✅ Bật / cập nhật email alerts",type="primary",use_container_width=True):
+        if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$",alert_email or ""): st.error("Email chưa đúng định dạng.")
+        else:
+            try: upsert_subscriber(alert_email,threshold,True); st.success(f"Đã bật alerts cho {alert_email}, ngưỡng {threshold}/100.")
+            except Exception as exc: st.error(f"Không lưu được cấu hình: {exc}")
+    if b2.button("🔕 Tắt alerts",use_container_width=True):
+        try: disable_subscriber(alert_email); st.success("Đã tắt alerts cho email này.")
+        except Exception as exc: st.error(f"Không cập nhật được: {exc}")
+    if not supabase_enabled(): st.info("App đang dùng SQLite local. Khi deploy production, thêm SUPABASE_URL và SUPABASE_KEY để Streamlit và GitHub Actions dùng chung database.")
+
+    st.markdown("#### ⚡ News radar")
+    f1,f2,f3=st.columns(3)
+    alert_filter=f1.selectbox("Mức urgency",["HIGH + CRITICAL","CRITICAL only","Tất cả"],index=0)
+    region_filter=f2.selectbox("Khu vực",["Tất cả","Việt Nam","Quốc tế"],index=0)
+    topic_filter=f3.selectbox("Chủ đề",["Tất cả","Ngân hàng","Bất động sản","Chứng khoán","Thép / Vật liệu","Dầu khí / Năng lượng","Công nghệ","Bán lẻ / Tiêu dùng","Xuất khẩu","Logistics / Hàng không","Đa ngành / Thị trường"],index=0)
+    min_score=70 if alert_filter=="HIGH + CRITICAL" else 90 if alert_filter=="CRITICAL only" else 0
+    try: recent=get_recent_articles(limit=180,min_score=min_score)
+    except Exception as exc: recent=[]; st.error(f"Không tải được alerts: {exc}")
+    if region_filter!="Tất cả": recent=[x for x in recent if (x.get("region") or classify_region(f"{x.get('title','')} {x.get('summary','')}"))==region_filter]
+    if topic_filter!="Tất cả": recent=[x for x in recent if (x.get("market_topic") or detect_sector(f"{x.get('title','')} {x.get('summary','')}"))==topic_filter]
+    if recent:
+        render_market_synthesis(recent,"🧠 Tổng hợp nhanh từ News Radar")
+        rows=[]
+        for x in recent:
+            t=x.get("tickers") or []; t=[t] if isinstance(t,str) else t
+            rows.append({"Urgency":int(x.get("urgency_score",0)),"Mức độ":urgency_badge(int(x.get("urgency_score",0))),"Khu vực":x.get("region",""),"Mã CK":", ".join(t) or "Market","Tiêu đề":x.get("title",""),"Impact":x.get("impact",""),"Chủ đề":x.get("market_topic",""),"Nguồn":x.get("source",""),"Link":x.get("url","")})
+        rdf=pd.DataFrame(rows)
+        st.dataframe(rdf,hide_index=True,use_container_width=True,column_config={"Urgency":st.column_config.ProgressColumn("Urgency",min_value=0,max_value=100),"Link":st.column_config.LinkColumn("Link",display_text="Mở ↗")})
+    else:
+        st.info("Chưa có dữ liệu phù hợp. Chạy workflow **Update Financial News** một lần để nạp broad-market feed.")
+
+st.caption("⚠️ V5.1 là công cụ tổng hợp và sàng lọc thông tin. Investment Thesis phản ánh news flow/catalyst, không phải khuyến nghị mua/bán hoặc định giá mục tiêu.")

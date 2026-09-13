@@ -1,265 +1,122 @@
-# 📈 Stock News & Bond Analytics — V5 Alerts Edition
+# Market Intelligence V5.1
 
-Bản này nâng cấp trực tiếp từ **V4 THEME FIXED**. Hai chức năng cũ vẫn giữ nguyên:
+Streamlit dashboard for Vietnamese investors with broad-market news scanning, urgency scoring, market synthesis, stock investment-thesis generation and scheduled Resend email digests.
 
-1. **📰 Stock News** — quét tin theo mã, tóm tắt, sentiment, loại tin, trích thông tin trái phiếu, mở bài gốc, xuất CSV.
-2. **💵 Bond Valuation** — giá lý thuyết, YTM, Premium/Par/Discount, Macaulay Duration, Modified Duration, bảng cash flow, xuất CSV.
+## Tabs
 
-V5 bổ sung tab **🔔 Alerts & Urgency** và pipeline nền:
+- **Market Intelligence** — broad market synthesis plus deep scan by selected stock codes.
+- **Investment Thesis** — combines news flow into Bull case, Bear case, Catalysts, Risks and a confidence level.
+- **Alerts & Urgency** — Vietnam + international market radar, urgency filtering and email subscriptions.
 
-- GitHub Actions quét tin **mỗi 20 phút**.
-- Tin được chấm **Urgency 0–100**.
-- Chỉ tin đạt ngưỡng của từng người dùng mới vào Market Digest.
-- Gmail Digest gửi ở **07:00, 09:00, 12:00, 17:00 — Asia/Ho_Chi_Minh**.
-- Chống gửi trùng **theo từng email nhận** bằng bảng `article_deliveries`.
-- Streamlit và GitHub Actions dùng chung **Supabase**, nên web không cần mở liên tục.
+## Background schedule
 
----
+- News scanner: every 20 minutes.
+- Digest delivery: 07:00, 09:00, 12:00, 17:00, timezone `Asia/Ho_Chi_Minh`.
 
-## 1. Cấu trúc project
+## 1. Install locally
 
-```text
-.
-├── app.py                         # V4 UI + tab Alerts & Urgency
-├── urgency.py                     # Urgency engine
-├── storage.py                     # Supabase / SQLite fallback
-├── background_news.py             # Scanner chạy nền
-├── email_service.py               # HTML Gmail Digest
-├── supabase_schema.sql            # Database schema
-├── jobs/
-│   ├── update_news.py
-│   └── send_digest.py
-├── .github/workflows/
-│   ├── update_news.yml            # */20 phút
-│   └── send_digest.yml            # 07, 09, 12, 17 giờ
-├── .streamlit/config.toml
-├── requirements.txt
-├── .env.example
-└── START_HERE_WINDOWS.bat
+```bash
+python -m venv .venv
+# Windows
+.venv\Scripts\activate
+pip install -r requirements.txt
+copy .env.example .env
+streamlit run app.py
 ```
 
----
+## 2. Supabase
 
-## 2. Chạy local như V4
+Create a Supabase project and run the entire `supabase_schema.sql` in SQL Editor.
 
-### Windows
-Double-click:
-
-```text
-START_HERE_WINDOWS.bat
-```
-
-Nếu chưa cấu hình Supabase, tab Alerts dùng **SQLite local** để bạn xem và test giao diện. Hai tab V4 vẫn chạy bình thường.
-
----
-
-## 3. Tạo Supabase cho V5
-
-1. Tạo một project trên Supabase.
-2. Mở **SQL Editor**.
-3. Copy toàn bộ nội dung file `supabase_schema.sql` → Run.
-4. Lấy:
-   - Project URL → `SUPABASE_URL`
-   - **service_role key** → `SUPABASE_KEY`
-
-> `service_role` chỉ được đặt trong Streamlit Secrets / GitHub Secrets. Không ghi trực tiếp vào code hoặc commit lên GitHub.
-
-Database có 3 bảng:
-
-- `articles`: tin, ticker, summary, urgency, impact, trạng thái email.
-- `subscribers`: Gmail người dùng + ngưỡng urgency.
-- `article_deliveries`: lịch sử bài nào đã gửi cho email nào → chống gửi trùng theo user.
-
----
-
-## 4. Cấu hình Gmail gửi tin
-
-Prototype V5 dùng Gmail SMTP + App Password.
-
-1. Bật **2-Step Verification** cho Gmail gửi.
-2. Tạo **App Password**.
-3. Lưu 2 secret:
+Required server-side secrets:
 
 ```text
-GMAIL_USER
-GMAIL_APP_PASSWORD
+SUPABASE_URL=https://YOUR_PROJECT.supabase.co
+SUPABASE_KEY=sb_secret_xxxxxxxxx
 ```
 
-Không dùng mật khẩu Gmail chính.
+Do not commit the secret key.
 
----
+## 3. Resend
 
-## 5. GitHub Secrets
+Create a Resend account and an API key. V5.1 calls the official Resend REST Email API over HTTPS.
 
-Repo GitHub → **Settings → Secrets and variables → Actions → Secrets**.
+GitHub repository secret:
 
-Tạo:
+```text
+RESEND_API_KEY=re_xxxxxxxxx
+```
+
+GitHub repository variable:
+
+```text
+RESEND_FROM=Stock News Intelligence <onboarding@resend.dev>
+```
+
+For initial testing, `onboarding@resend.dev` is suitable only when the recipient is the email tied to your Resend account. For multiple public recipients, verify a domain in Resend and change `RESEND_FROM`, for example:
+
+```text
+RESEND_FROM=Market Intelligence <alerts@updates.yourdomain.com>
+```
+
+## 4. GitHub Actions configuration
+
+### Secrets
 
 ```text
 SUPABASE_URL
 SUPABASE_KEY
-GMAIL_USER
-GMAIL_APP_PASSWORD
+RESEND_API_KEY
 ```
 
-Nếu đang dùng AI summary của V4, `OPENAI_API_KEY` vẫn cấu hình cho Streamlit như trước; pipeline alert hiện không bắt buộc AI nên tiết kiệm chi phí.
-
----
-
-## 6. GitHub Variables
-
-Repo → **Settings → Secrets and variables → Actions → Variables**.
-
-Khuyến nghị tạo:
+### Variables
 
 ```text
-WATCH_TICKERS = FPT,TCB,VIC,VHM,PVS,SSI,VCB,BID,CTG,MBB,VPB,HPG,MWG,VNM,GAS
+RESEND_FROM
+ALERT_RECIPIENTS   # optional test fallback
 ```
 
-Tuỳ chọn:
+V5.1 no longer needs `WATCH_TICKERS`.
 
-```text
-ALERT_RECIPIENTS = your.receiver@gmail.com
-```
+## 5. Streamlit secrets
 
-`ALERT_RECIPIENTS` chỉ là fallback. Cách đẹp hơn là vào tab **Alerts & Urgency** trên web và đăng ký Gmail tại đó.
-
----
-
-## 7. Streamlit Cloud Secrets
-
-Trong app Streamlit → **Settings → Secrets**, thêm:
+At minimum:
 
 ```toml
 SUPABASE_URL = "https://YOUR_PROJECT.supabase.co"
-SUPABASE_KEY = "YOUR_SERVICE_ROLE_KEY"
+SUPABASE_KEY = "sb_secret_xxxxxxxxx"
+```
 
-# Optional V4 deep AI summary
+Optional AI summaries:
+
+```toml
 OPENAI_API_KEY = "..."
-OPENAI_MODEL = "gpt-5.6-luna"
+OPENAI_MODEL = "..."
 ```
 
-Gmail sender không bắt buộc đặt trong Streamlit nếu việc gửi chỉ chạy bằng GitHub Actions.
+## 6. First test
 
----
+1. GitHub → Actions → **Update Financial News** → Run workflow.
+2. Supabase → `articles` → verify rows exist.
+3. Open the Streamlit app → **Alerts & Urgency**.
+4. Register a recipient email and threshold.
+5. GitHub → Actions → **Send Market Urgency Digest** → Run workflow.
+6. Check `article_deliveries` to verify per-recipient deduplication.
 
-## 8. Bật workflow lần đầu
+## Coverage model
 
-GitHub repo → **Actions**.
+The scanner runs multiple broad streams instead of scanning only user-selected tickers:
 
-### A. Update Financial News
-Chọn → **Run workflow** một lần.
+- Listed-company and corporate news
+- VN-Index / VN30 / HNX / UPCoM market news
+- State Bank, rates, FX, credit, CPI, GDP and policy
+- Banking, property and other major sectors
+- Corporate/legal/market-risk events
+- Fed/FOMC, US equities, China/Asia
+- Oil, gold, OPEC, trade policy and geopolitical shocks
 
-Workflow sẽ:
+No news aggregator can guarantee literally every article on the internet. V5.1 is designed for broad, high-frequency coverage and prioritization rather than a finite ticker watchlist.
 
-```text
-Google News RSS
-→ merge bài trùng
-→ detect tickers
-→ Urgency Engine
-→ Impact / Scope / Reasons
-→ Supabase
-```
+## Disclaimer
 
-Sau đó tự chạy mỗi **20 phút**.
-
-### B. Send Market Urgency Digest
-Chọn → **Run workflow** để test Gmail.
-
-Sau đó tự chạy:
-
-```text
-07:00
-09:00
-12:00
-17:00
-```
-
-Timezone: `Asia/Ho_Chi_Minh`.
-
-Nếu không có bài mới đạt ngưỡng → **không gửi email rỗng**.
-
----
-
-## 9. Urgency Engine
-
-Mặc định:
-
-| Score | Level | Email |
-|---:|---|---|
-| 90–100 | 🔴 CRITICAL | Có |
-| 70–89 | 🟠 HIGH | Có nếu threshold = 70 |
-| 45–69 | 🟡 MEDIUM | Dashboard |
-| 0–44 | 🟢 LOW | Dashboard |
-
-Engine xét nhiều yếu tố thay vì chỉ một keyword:
-
-- Sự kiện pháp lý: khởi tố, bắt tạm giam, đình chỉ giao dịch, hủy niêm yết…
-- Default / trái phiếu: vỡ nợ, chậm thanh toán, gia hạn…
-- NHNN / Fed / FOMC / lãi suất / tỷ giá / nâng hạng.
-- KQKD, kiểm toán, M&A, thay đổi lãnh đạo.
-- Biến động thị trường: bán tháo, call margin, force sell…
-- Từ khóa có nằm ngay trong **title** hay chỉ ở body.
-- Có số liệu `%`, `tỷ đồng` hay không.
-- Nguồn có tính chính thống/cao hay không.
-- Bài opinion/dự báo bị trừ điểm nếu không có hard event.
-
-Mỗi người dùng có thể chọn threshold từ **50–95** trong tab Alerts.
-
----
-
-## 10. Email Digest
-
-Một email gom nhiều tin thay vì spam từng bài:
-
-```text
-MARKET INTELLIGENCE
-11/09/2026 · 09:00
-
-CRITICAL · 94/100
-[Tiêu đề]
-Ticker: ...
-Impact: ...
-Scope: ...
-Summary: ...
-Vì sao urgent: ...
-Đọc bài gốc ↗
-```
-
-Nếu một bài đã gửi cho A nhưng chưa gửi cho B, hệ thống vẫn xử lý độc lập nhờ `article_deliveries`.
-
----
-
-## 11. Luồng hoàn chỉnh
-
-```text
-Every 20 minutes
-       ↓
-   Fetch News
-       ↓
- Remove duplicates
-       ↓
- Detect ticker/type
-       ↓
- Urgency 0–100
- Impact / Scope
-       ↓
-    Supabase
-       ↓
- User threshold filter
-       ↓
-Per-user deduplication
-       ↓
-07 / 09 / 12 / 17
-       ↓
-   Gmail Digest
-```
-
----
-
-## 12. Lưu ý khi deploy
-
-- Scheduled GitHub Actions chạy trên default branch.
-- Cron có thể có một độ trễ nhỏ khi GitHub Actions đang tải cao; lịch cấu hình vẫn là đúng 07:00 / 09:00 / 12:00 / 17:00 theo timezone Việt Nam.
-- Không commit `.env`, service-role key hoặc Gmail App Password.
-- Với production nhiều user, bước tiếp theo nên là login/authentication và Gmail OAuth thay cho App Password.
+The dashboard is an information and research tool. Investment Thesis is based on news flow and is not a personalized recommendation or target-price valuation.

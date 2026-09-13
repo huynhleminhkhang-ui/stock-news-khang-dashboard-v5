@@ -13,13 +13,23 @@ create table if not exists public.articles (
   urgency_level text,
   impact text,
   market_scope text,
+  region text default 'Việt Nam',
+  market_topic text default 'Đa ngành / Thị trường',
+  stream text,
   reasons text[] default '{}',
   email_sent boolean default false,
   email_sent_at timestamptz
 );
 
+-- Safe V5 -> V5.1 migration when the table already exists.
+alter table public.articles add column if not exists region text default 'Việt Nam';
+alter table public.articles add column if not exists market_topic text default 'Đa ngành / Thị trường';
+alter table public.articles add column if not exists stream text;
+
 create index if not exists idx_articles_published_at on public.articles (published_at desc);
 create index if not exists idx_articles_urgency on public.articles (urgency_score desc);
+create index if not exists idx_articles_region on public.articles (region, published_at desc);
+create index if not exists idx_articles_topic on public.articles (market_topic, published_at desc);
 create index if not exists idx_articles_unsent on public.articles (email_sent, urgency_score desc);
 
 create table if not exists public.subscribers (
@@ -37,10 +47,6 @@ create table if not exists public.article_deliveries (
 );
 create index if not exists idx_deliveries_email on public.article_deliveries (email, sent_at desc);
 
--- V5 accesses these tables only from trusted server-side secrets / GitHub Actions.
--- Do not expose the service-role key in browser-side code.
-
--- Lock REST access to trusted server-side service-role usage.
 alter table public.articles enable row level security;
 alter table public.subscribers enable row level security;
 alter table public.article_deliveries enable row level security;

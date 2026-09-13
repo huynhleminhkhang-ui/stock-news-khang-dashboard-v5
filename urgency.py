@@ -56,6 +56,17 @@ MACRO_RULES = [
     ("chống bán phá giá", 20, "Biện pháp chống bán phá giá", "Thương mại", "Theo ngành"),
     ("cấm xuất khẩu", 20, "Hạn chế xuất khẩu", "Thương mại", "Theo ngành"),
     ("cấm nhập khẩu", 20, "Hạn chế nhập khẩu", "Thương mại", "Theo ngành"),
+    ("nonfarm payrolls", 16, "Dữ liệu việc làm Mỹ", "Quốc tế / Vĩ mô", "Toàn thị trường"),
+    ("pce", 15, "Dữ liệu lạm phát PCE Mỹ", "Quốc tế / Vĩ mô", "Toàn thị trường"),
+    ("s&p 500", 12, "Biến động chứng khoán Mỹ", "Quốc tế / Thị trường", "Toàn thị trường"),
+    ("nasdaq", 12, "Biến động Nasdaq", "Quốc tế / Thị trường", "Toàn thị trường"),
+    ("dow jones", 11, "Biến động Dow Jones", "Quốc tế / Thị trường", "Toàn thị trường"),
+    ("pboc", 18, "Chính sách tiền tệ Trung Quốc", "Quốc tế / Vĩ mô", "Toàn thị trường"),
+    ("opec", 16, "Thông tin nguồn cung dầu OPEC", "Quốc tế / Hàng hóa", "Theo ngành"),
+    ("brent", 13, "Biến động giá dầu Brent", "Quốc tế / Hàng hóa", "Theo ngành"),
+    ("wti", 13, "Biến động giá dầu WTI", "Quốc tế / Hàng hóa", "Theo ngành"),
+    ("trừng phạt", 22, "Rủi ro địa chính trị/trừng phạt", "Địa chính trị", "Toàn thị trường"),
+    ("sanctions", 22, "Rủi ro địa chính trị/trừng phạt", "Địa chính trị", "Toàn thị trường"),
 ]
 
 COMPANY_RULES = [
@@ -245,7 +256,7 @@ def calculate_urgency(title: str, summary: str = "", source: str = "", tickers: 
     # De-duplicate while preserving order.
     reasons = list(dict.fromkeys(reasons))[:4]
     if not reasons:
-        reasons = ["Tin mới liên quan mã theo dõi"]
+        reasons = ["Tin tài chính/thị trường mới được hệ thống ghi nhận"]
 
     return UrgencyResult(score, level, impact, category, scope, reasons).to_dict()
 

@@ -69,11 +69,19 @@ def _ensure_local():
             urgency_level TEXT,
             impact TEXT,
             market_scope TEXT,
+            region TEXT,
+            market_topic TEXT,
+            stream TEXT,
             reasons TEXT,
             email_sent INTEGER DEFAULT 0,
             email_sent_at TEXT
         )
         """)
+        # Lightweight migrations for users upgrading from V5 local SQLite.
+        cols = {row[1] for row in con.execute("PRAGMA table_info(articles)")}
+        for name in ("region", "market_topic", "stream"):
+            if name not in cols:
+                con.execute(f"ALTER TABLE articles ADD COLUMN {name} TEXT")
         con.execute("""
         CREATE TABLE IF NOT EXISTS subscribers (
             email TEXT PRIMARY KEY,
@@ -108,6 +116,9 @@ def save_article(article: dict):
         "urgency_level": article.get("urgency_level", "LOW"),
         "impact": article.get("impact", "Neutral"),
         "market_scope": article.get("market_scope", "Doanh nghiệp"),
+        "region": article.get("region", "Việt Nam"),
+        "market_topic": article.get("market_topic", "Đa ngành / Thị trường"),
+        "stream": article.get("stream", ""),
         "reasons": article.get("reasons", []),
     }
     if supabase_enabled():
